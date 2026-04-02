@@ -14,6 +14,7 @@ import {
   Heart,
   MapPin,
   Activity,
+  Download,
 } from 'lucide-react';
 
 interface Message {
@@ -328,6 +329,27 @@ export default function AdminPage() {
   const leadsOnly = conversations.filter((c) => c.user_name || c.user_phone);
   const anonymousCount = conversations.length - leadsOnly.length;
 
+  const exportCSV = () => {
+    const rows = [
+      ['Name', 'Phone', 'Location', 'Service Interest', 'Date'],
+      ...leadsOnly.map((c) => [
+        c.user_name || '',
+        c.user_phone || '',
+        c.user_location || '',
+        c.service_interest || '',
+        formatDate(c.created_at),
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -348,6 +370,15 @@ export default function AdminPage() {
                 Updated {lastRefresh.toLocaleTimeString()}
               </span>
             )}
+            <button
+              onClick={exportCSV}
+              disabled={leadsOnly.length === 0}
+              className="flex items-center gap-2 text-sm text-white px-3 py-2 rounded-xl transition-colors disabled:opacity-40"
+              style={{ backgroundColor: '#78b833' }}
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
             <button
               onClick={() => fetchData(password)}
               disabled={loading}

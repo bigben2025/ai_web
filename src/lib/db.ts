@@ -1,27 +1,15 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@libsql/client';
 
-const DB_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DB_DIR, 'concierge_care.db');
+function getDB() {
+  return createClient({
+    url: process.env.TURSO_DATABASE_URL!,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
+}
 
-let db: Database.Database | null = null;
-
-export function getDB(): Database.Database {
-  if (db) return db;
-
-  // Ensure data directory exists
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-  }
-
-  db = new Database(DB_PATH);
-
-  // Enable WAL mode for better performance
-  db.pragma('journal_mode = WAL');
-
-  // Create tables
-  db.exec(`
+async function initDB() {
+  const db = getDB();
+  await db.executeMultiple(`
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL UNIQUE,
@@ -32,26 +20,30 @@ export function getDB(): Database.Database {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+      role TEXT NOT NULL,
       content TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
-
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id);
     CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
   `);
+}
 
-  return db;
+let initialized = false;
+async function ensureInit() {
+  if (!initialized) {
+    await initDB();
+    initialized = true;
+  }
 }
 
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 export interface Conversation {
@@ -73,53 +65,53 @@ export interface Message {
   created_at: string;
 }
 
-export function getOrCreateConversation(sessionId: string): Conversation {
-  const database = getDB();
+export async function getOrCreateConversation(sessionId: string): Promise<Conversation> {
+  await ensureInit();
+  const db = getDB();
 
-  let conversation = database
-    .prepare('SELECT * FROM conversations WHERE session_id = ?')
-    .get(sessionId) as Conversation | undefined;
+  const existing = await db.execute({
+    sql: 'SELECT * FROM conversations WHERE session_id = ?',
+    args: [sessionId],
+  });
 
-  if (!conversation) {
-    const id = generateId();
-    database
-      .prepare(
-        'INSERT INTO conversations (id, session_id) VALUES (?, ?)'
-      )
-      .run(id, sessionId);
-    conversation = database
-      .prepare('SELECT * FROM conversations WHERE id = ?')
-      .get(id) as Conversation;
+  if (existing.rows.length > 0) {
+    return existing.rows[0] as unknown as Conversation;
   }
 
-  return conversation;
+  const id = generateId();
+  await db.execute({
+    sql: 'INSERT INTO conversations (id, session_id) VALUES (?, ?)',
+    args: [id, sessionId],
+  });
+
+  const created = await db.execute({
+    sql: 'SELECT * FROM conversations WHERE id = ?',
+    args: [id],
+  });
+  return created.rows[0] as unknown as Conversation;
 }
 
-export function saveMessage(
+export async function saveMessage(
   conversationId: string,
   role: 'user' | 'assistant',
   content: string
-): Message {
-  const database = getDB();
+): Promise<void> {
+  await ensureInit();
+  const db = getDB();
   const id = generateId();
 
-  database
-    .prepare(
-      'INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)'
-    )
-    .run(id, conversationId, role, content);
+  await db.execute({
+    sql: 'INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)',
+    args: [id, conversationId, role, content],
+  });
 
-  // Update conversation updated_at
-  database
-    .prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?")
-    .run(conversationId);
-
-  return database
-    .prepare('SELECT * FROM messages WHERE id = ?')
-    .get(id) as Message;
+  await db.execute({
+    sql: "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
+    args: [conversationId],
+  });
 }
 
-export function updateConversationLead(
+export async function updateConversationLead(
   sessionId: string,
   leadData: {
     name?: string;
@@ -127,89 +119,63 @@ export function updateConversationLead(
     location?: string;
     serviceInterest?: string;
   }
-): void {
-  const database = getDB();
+): Promise<void> {
+  await ensureInit();
+  const db = getDB();
 
   const updates: string[] = [];
-  const values: string[] = [];
+  const values: (string)[] = [];
 
-  if (leadData.name) {
-    updates.push('user_name = ?');
-    values.push(leadData.name);
-  }
-  if (leadData.phone) {
-    updates.push('user_phone = ?');
-    values.push(leadData.phone);
-  }
-  if (leadData.location) {
-    updates.push('user_location = ?');
-    values.push(leadData.location);
-  }
-  if (leadData.serviceInterest) {
-    updates.push('service_interest = ?');
-    values.push(leadData.serviceInterest);
-  }
+  if (leadData.name) { updates.push('user_name = ?'); values.push(leadData.name); }
+  if (leadData.phone) { updates.push('user_phone = ?'); values.push(leadData.phone); }
+  if (leadData.location) { updates.push('user_location = ?'); values.push(leadData.location); }
+  if (leadData.serviceInterest) { updates.push('service_interest = ?'); values.push(leadData.serviceInterest); }
 
   if (updates.length > 0) {
     updates.push("updated_at = datetime('now')");
     values.push(sessionId);
-
-    database
-      .prepare(
-        `UPDATE conversations SET ${updates.join(', ')} WHERE session_id = ?`
-      )
-      .run(...values);
+    await db.execute({
+      sql: `UPDATE conversations SET ${updates.join(', ')} WHERE session_id = ?`,
+      args: values,
+    });
   }
 }
 
-export function getAllConversationsWithMessages(): (Conversation & {
-  messages: Message[];
-})[] {
-  const database = getDB();
+export async function getAllConversationsWithMessages(): Promise<(Conversation & { messages: Message[] })[]> {
+  await ensureInit();
+  const db = getDB();
 
-  const conversations = database
-    .prepare('SELECT * FROM conversations ORDER BY updated_at DESC')
-    .all() as Conversation[];
+  const convResult = await db.execute('SELECT * FROM conversations ORDER BY updated_at DESC');
+  const conversations = convResult.rows as unknown as Conversation[];
 
-  return conversations.map((conv) => {
-    const messages = database
-      .prepare(
-        'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
-      )
-      .all(conv.id) as Message[];
-
-    return { ...conv, messages };
-  });
+  return Promise.all(
+    conversations.map(async (conv) => {
+      const msgResult = await db.execute({
+        sql: 'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
+        args: [conv.id],
+      });
+      return { ...conv, messages: msgResult.rows as unknown as Message[] };
+    })
+  );
 }
 
-export function getStats(): {
+export async function getStats(): Promise<{
   totalConversations: number;
   leadsWithPhone: number;
   todayConversations: number;
-} {
-  const database = getDB();
+}> {
+  await ensureInit();
+  const db = getDB();
 
-  const totalConversations = (
-    database
-      .prepare('SELECT COUNT(*) as count FROM conversations')
-      .get() as { count: number }
-  ).count;
+  const [total, leads, today] = await Promise.all([
+    db.execute('SELECT COUNT(*) as count FROM conversations'),
+    db.execute("SELECT COUNT(*) as count FROM conversations WHERE user_phone IS NOT NULL AND user_phone != ''"),
+    db.execute("SELECT COUNT(*) as count FROM conversations WHERE date(created_at) = date('now')"),
+  ]);
 
-  const leadsWithPhone = (
-    database
-      .prepare(
-        "SELECT COUNT(*) as count FROM conversations WHERE user_phone IS NOT NULL AND user_phone != ''"
-      )
-      .get() as { count: number }
-  ).count;
-
-  const todayConversations = (
-    database
-      .prepare(
-        "SELECT COUNT(*) as count FROM conversations WHERE date(created_at) = date('now')"
-      )
-      .get() as { count: number }
-  ).count;
-
-  return { totalConversations, leadsWithPhone, todayConversations };
+  return {
+    totalConversations: Number(total.rows[0].count),
+    leadsWithPhone: Number(leads.rows[0].count),
+    todayConversations: Number(today.rows[0].count),
+  };
 }

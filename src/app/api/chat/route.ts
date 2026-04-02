@@ -24,11 +24,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const conversation = getOrCreateConversation(sessionId);
+    const conversation = await getOrCreateConversation(sessionId);
 
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.role === 'user') {
-      saveMessage(conversation.id, 'user', lastMessage.content);
+      await saveMessage(conversation.id, 'user', lastMessage.content);
     }
 
     let provider;
@@ -57,11 +57,11 @@ export async function POST(req: NextRequest) {
               fullAssistantResponse += event.text;
               sendEvent({ type: 'text', text: event.text });
             } else if (event.type === 'lead_captured') {
-              updateConversationLead(sessionId, event.data);
+              await updateConversationLead(sessionId, event.data);
               sendEvent({ type: 'lead_captured', data: event.data });
             } else if (event.type === 'done') {
               if (fullAssistantResponse) {
-                saveMessage(conversation.id, 'assistant', fullAssistantResponse);
+                await saveMessage(conversation.id, 'assistant', fullAssistantResponse);
               }
               sendEvent({ type: 'done' });
               controller.close();
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
           // Fallback close if generator finishes without 'done'
           if (fullAssistantResponse) {
-            saveMessage(conversation.id, 'assistant', fullAssistantResponse);
+            await saveMessage(conversation.id, 'assistant', fullAssistantResponse);
           }
           sendEvent({ type: 'done' });
           controller.close();

@@ -28,8 +28,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const conversations = getAllConversationsWithMessages();
-    const stats = getStats();
+    const [conversations, stats] = await Promise.all([
+      getAllConversationsWithMessages(),
+      getStats(),
+    ]);
 
     return new Response(
       JSON.stringify({ conversations, stats }),

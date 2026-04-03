@@ -326,6 +326,8 @@ export default function AdminPage() {
   useEffect(() => {
     if (password) {
       fetchData(password);
+      const interval = setInterval(() => fetchData(password), 30000);
+      return () => clearInterval(interval);
     }
   }, [password, fetchData]);
 

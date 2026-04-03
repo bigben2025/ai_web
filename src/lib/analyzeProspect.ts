@@ -22,8 +22,8 @@ Based on the conversation below, respond with ONLY a JSON object in this exact f
 {"status":"hot","summary":"One sentence about who they are and what they need"}
 
 Status rules:
-- "hot" = has a specific care need, mentioned urgency, or left contact info
-- "warm" = interested but vague, just browsing, or asked general questions
+- "hot" = shared their name AND phone number AND location (all three must be present)
+- "warm" = showed genuine interest in care services but did NOT share all contact details (name, phone, location)
 - "not_a_fit" = wrong service, spam, testing, or clearly not a real inquiry
 
 Keep the summary under 15 words. Include name if known.

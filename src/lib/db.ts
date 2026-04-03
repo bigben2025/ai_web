@@ -39,6 +39,7 @@ async function initDB() {
   for (const sql of [
     "ALTER TABLE conversations ADD COLUMN prospect_status TEXT",
     "ALTER TABLE conversations ADD COLUMN ai_summary TEXT",
+    "ALTER TABLE conversations ADD COLUMN follow_up_status TEXT",
   ]) {
     try {
       await db.execute(sql);
@@ -69,6 +70,7 @@ export interface Conversation {
   service_interest: string | null;
   prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
   ai_summary: string | null;
+  follow_up_status: 'not_contacted' | 'called' | 'no_answer' | 'appointment_set' | null;
   created_at: string;
   updated_at: string;
 }
@@ -185,6 +187,18 @@ export async function saveProspectAnalysis(
   await db.execute({
     sql: "UPDATE conversations SET prospect_status = ?, ai_summary = ?, updated_at = datetime('now') WHERE id = ?",
     args: [status, summary, conversationId],
+  });
+}
+
+export async function updateFollowUpStatus(
+  conversationId: string,
+  status: 'not_contacted' | 'called' | 'no_answer' | 'appointment_set'
+): Promise<void> {
+  await ensureInit();
+  const db = getDB();
+  await db.execute({
+    sql: "UPDATE conversations SET follow_up_status = ?, updated_at = datetime('now') WHERE id = ?",
+    args: [status, conversationId],
   });
 }
 

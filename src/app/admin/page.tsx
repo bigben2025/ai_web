@@ -34,6 +34,7 @@ interface Conversation {
   service_interest: string | null;
   prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
   ai_summary: string | null;
+  follow_up_status: 'not_contacted' | 'called' | 'no_answer' | 'appointment_set' | null;
   created_at: string;
   updated_at: string;
   messages: Message[];
@@ -85,8 +86,41 @@ function StatCard({
   );
 }
 
-function ConversationRow({ conv }: { conv: Conversation }) {
+const FOLLOW_UP_OPTIONS = [
+  { value: 'not_contacted', label: 'Not Contacted', color: 'bg-gray-100 text-gray-600 border-gray-200' },
+  { value: 'called', label: 'Called', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { value: 'no_answer', label: 'No Answer', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  { value: 'appointment_set', label: 'Appt Set ✓', color: 'bg-green-100 text-green-700 border-green-200' },
+] as const;
+
+function ConversationRow({ conv, password, onStatusChange }: {
+  conv: Conversation;
+  password: string;
+  onStatusChange: (id: string, status: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const currentStatus = conv.follow_up_status || 'not_contacted';
+
+  const handleFollowUp = async (e: React.MouseEvent, status: string) => {
+    e.stopPropagation();
+    if (status === currentStatus) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/conversations/${conv.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${password}`,
+        },
+        body: JSON.stringify({ follow_up_status: status }),
+      });
+      onStatusChange(conv.id, status);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden mb-3">
@@ -153,12 +187,30 @@ function ConversationRow({ conv }: { conv: Conversation }) {
             </div>
           </div>
 
-          <div className="flex-shrink-0 text-gray-400">
-            {expanded ? (
-              <ChevronUp className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="hidden sm:flex items-center gap-1">
+              {FOLLOW_UP_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={(e) => handleFollowUp(e, opt.value)}
+                  disabled={saving}
+                  className={`text-xs px-2 py-1 rounded-lg border font-medium transition-all ${
+                    currentStatus === opt.value
+                      ? opt.color + ' ring-2 ring-offset-1 ring-current'
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                  } disabled:opacity-50`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-gray-400">
+              {expanded ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </div>
           </div>
         </div>
       </button>
@@ -351,7 +403,7 @@ export default function AdminPage() {
 
   const exportCSV = () => {
     const rows = [
-      ['Name', 'Phone', 'Location', 'Service Interest', 'Prospect Status', 'AI Summary', 'Date'],
+      ['Name', 'Phone', 'Location', 'Service Interest', 'Prospect Status', 'AI Summary', 'Follow Up', 'Date'],
       ...conversations.map((c) => [
         c.user_name || '',
         c.user_phone || '',
@@ -359,6 +411,7 @@ export default function AdminPage() {
         c.service_interest || '',
         c.prospect_status || '',
         c.ai_summary || '',
+        c.follow_up_status || 'not_contacted',
         formatDate(c.created_at),
       ]),
     ];
@@ -478,7 +531,18 @@ export default function AdminPage() {
         ) : (
           <div>
             {conversations.map((conv) => (
-              <ConversationRow key={conv.id} conv={conv} />
+              <ConversationRow
+                key={conv.id}
+                conv={conv}
+                password={password}
+                onStatusChange={(id, status) =>
+                  setConversations((prev) =>
+                    prev.map((c) =>
+                      c.id === id ? { ...c, follow_up_status: status as Conversation['follow_up_status'] } : c
+                    )
+                  )
+                }
+              />
             ))}
           </div>
         )}

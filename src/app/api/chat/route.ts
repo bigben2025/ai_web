@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getOrCreateConversation, saveMessage, updateConversationLead, saveProspectAnalysis } from '@/lib/db';
 import { getProvider } from '@/lib/providers';
 import { analyzeProspect } from '@/lib/analyzeProspect';
+import { sendHotLeadAlert } from '@/lib/notify';
 
 export const runtime = 'nodejs';
 
@@ -65,8 +66,19 @@ export async function POST(req: NextRequest) {
                 await saveMessage(conversation.id, 'assistant', fullAssistantResponse);
               }
               const allMessages = [...messages, { role: 'assistant' as const, content: fullAssistantResponse }];
-              analyzeProspect(allMessages).then((analysis) => {
-                if (analysis) saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+              analyzeProspect(allMessages).then(async (analysis) => {
+                if (analysis) {
+                  await saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+                  if (analysis.status === 'hot') {
+                    sendHotLeadAlert({
+                      name: conversation.user_name,
+                      phone: conversation.user_phone,
+                      location: conversation.user_location,
+                      service_interest: conversation.service_interest,
+                      summary: analysis.summary,
+                    }).catch(() => {});
+                  }
+                }
               }).catch(() => {});
               sendEvent({ type: 'done' });
               controller.close();
@@ -80,8 +92,19 @@ export async function POST(req: NextRequest) {
           }
           // Analyze prospect in background (don't block response)
           const allMessages = [...messages, { role: 'assistant' as const, content: fullAssistantResponse }];
-          analyzeProspect(allMessages).then((analysis) => {
-            if (analysis) saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+          analyzeProspect(allMessages).then(async (analysis) => {
+            if (analysis) {
+              await saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+              if (analysis.status === 'hot') {
+                sendHotLeadAlert({
+                  name: conversation.user_name,
+                  phone: conversation.user_phone,
+                  location: conversation.user_location,
+                  service_interest: conversation.service_interest,
+                  summary: analysis.summary,
+                }).catch(() => {});
+              }
+            }
           }).catch(() => {});
           sendEvent({ type: 'done' });
           controller.close();

@@ -15,6 +15,9 @@ import {
   Activity,
   Download,
   Flame,
+  Trash2,
+  Search,
+  StickyNote,
 } from 'lucide-react';
 
 interface Message {
@@ -35,6 +38,7 @@ interface Conversation {
   prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
   ai_summary: string | null;
   follow_up_status: 'not_contacted' | 'called' | 'no_answer' | 'appointment_set' | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
   messages: Message[];
@@ -93,13 +97,18 @@ const FOLLOW_UP_OPTIONS = [
   { value: 'appointment_set', label: 'Appt Set ✓', color: 'bg-green-100 text-green-700 border-green-200' },
 ] as const;
 
-function ConversationRow({ conv, password, onStatusChange }: {
+function ConversationRow({ conv, password, onStatusChange, onDelete, onNotesChange }: {
   conv: Conversation;
   password: string;
   onStatusChange: (id: string, status: string) => void;
+  onDelete: (id: string) => void;
+  onNotesChange: (id: string, notes: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState(conv.notes || '');
+  const [notesSaved, setNotesSaved] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const currentStatus = conv.follow_up_status || 'not_contacted';
 
@@ -110,16 +119,34 @@ function ConversationRow({ conv, password, onStatusChange }: {
     try {
       await fetch(`/api/conversations/${conv.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${password}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
         body: JSON.stringify({ follow_up_status: status }),
       });
       onStatusChange(conv.id, status);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveNotes = async () => {
+    await fetch(`/api/conversations/${conv.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
+      body: JSON.stringify({ notes }),
+    });
+    onNotesChange(conv.id, notes);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirmDelete) { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 3000); return; }
+    await fetch(`/api/conversations/${conv.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${password}` },
+    });
+    onDelete(conv.id);
   };
 
   return (
@@ -204,6 +231,13 @@ function ConversationRow({ conv, password, onStatusChange }: {
                 </button>
               ))}
             </div>
+            <button
+              onClick={handleDelete}
+              className={`p-1.5 rounded-lg transition-colors ${confirmDelete ? 'bg-red-100 text-red-600' : 'text-gray-300 hover:text-red-400 hover:bg-red-50'}`}
+              title={confirmDelete ? 'Click again to confirm delete' : 'Delete conversation'}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
             <div className="text-gray-400">
               {expanded ? (
                 <ChevronUp className="w-4 h-4" />
@@ -216,43 +250,64 @@ function ConversationRow({ conv, password, onStatusChange }: {
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Conversation History
-          </h4>
-          <div className="space-y-3 max-h-80 overflow-y-auto">
-            {conv.messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-              >
+        <div className="border-t border-gray-100 bg-gray-50 px-6 py-4 space-y-4">
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Conversation History
+            </h4>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {conv.messages.map((msg) => (
                 <div
-                  className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                    msg.role === 'user'
-                      ? 'bg-gray-300 text-gray-600'
-                      : 'bg-teal-500 text-white'
-                  }`}
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                 >
-                  {msg.role === 'user' ? 'U' : 'A'}
-                </div>
-                <div
-                  className={`max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-teal-500 text-white rounded-tr-none'
-                      : 'bg-white border border-gray-200 text-gray-700 rounded-tl-none'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                  <p
-                    className={`mt-1 text-[10px] ${
-                      msg.role === 'user' ? 'text-teal-200' : 'text-gray-400'
+                  <div
+                    className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                      msg.role === 'user'
+                        ? 'bg-gray-300 text-gray-600'
+                        : 'bg-teal-500 text-white'
                     }`}
                   >
-                    {formatDate(msg.created_at)}
-                  </p>
+                    {msg.role === 'user' ? 'U' : 'A'}
+                  </div>
+                  <div
+                    className={`max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-teal-500 text-white rounded-tr-none'
+                        : 'bg-white border border-gray-200 text-gray-700 rounded-tl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <p
+                      className={`mt-1 text-[10px] ${
+                        msg.role === 'user' ? 'text-teal-200' : 'text-gray-400'
+                      }`}
+                    >
+                      {formatDate(msg.created_at)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <StickyNote className="w-3 h-3" /> Private Notes
+            </h4>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add notes about this lead (only visible to admins)..."
+              rows={2}
+              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
+            />
+            <button
+              onClick={handleSaveNotes}
+              className="mt-1 text-xs bg-teal-500 text-white px-3 py-1 rounded-lg hover:bg-teal-600 transition-colors"
+            >
+              {notesSaved ? 'Saved ✓' : 'Save Notes'}
+            </button>
           </div>
         </div>
       )}
@@ -342,6 +397,8 @@ export default function AdminPage() {
   });
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Restore password from localStorage
   useEffect(() => {
@@ -401,9 +458,25 @@ export default function AdminPage() {
   const leadsOnly = conversations.filter((c) => c.user_name || c.user_phone);
   const anonymousCount = conversations.length - leadsOnly.length;
 
+  const filtered = conversations.filter((c) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      !q ||
+      (c.user_name || '').toLowerCase().includes(q) ||
+      (c.user_phone || '').toLowerCase().includes(q) ||
+      (c.user_location || '').toLowerCase().includes(q);
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'hot' && c.prospect_status === 'hot') ||
+      (statusFilter === 'warm' && c.prospect_status === 'warm') ||
+      (statusFilter === 'not_a_fit' && c.prospect_status === 'not_a_fit') ||
+      (statusFilter === 'unanalyzed' && !c.prospect_status);
+    return matchesSearch && matchesStatus;
+  });
+
   const exportCSV = () => {
     const rows = [
-      ['Name', 'Phone', 'Location', 'Service Interest', 'Prospect Status', 'AI Summary', 'Follow Up', 'Date'],
+      ['Name', 'Phone', 'Location', 'Service Interest', 'Prospect Status', 'AI Summary', 'Follow Up', 'Notes', 'Date'],
       ...conversations.map((c) => [
         c.user_name || '',
         c.user_phone || '',
@@ -412,6 +485,7 @@ export default function AdminPage() {
         c.prospect_status || '',
         c.ai_summary || '',
         c.follow_up_status || 'not_contacted',
+        c.notes || '',
         formatDate(c.created_at),
       ]),
     ];
@@ -502,6 +576,31 @@ export default function AdminPage() {
           />
         </div>
 
+        {/* Search & Filter */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, phone, or location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
+          >
+            <option value="all">All Statuses</option>
+            <option value="hot">🔥 Hot</option>
+            <option value="warm">🌤 Warm</option>
+            <option value="not_a_fit">Not a Fit</option>
+            <option value="unanalyzed">Unanalyzed</option>
+          </select>
+        </div>
+
         {/* Conversations */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-800">
@@ -520,17 +619,21 @@ export default function AdminPage() {
             <RefreshCw className="w-8 h-8 text-teal-400 animate-spin mx-auto mb-3" />
             <p className="text-gray-500">Loading conversations...</p>
           </div>
-        ) : conversations.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-xl border border-gray-100 shadow-sm">
             <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h3 className="text-gray-600 font-medium">No conversations yet</h3>
+            <h3 className="text-gray-600 font-medium">
+              {conversations.length === 0 ? 'No conversations yet' : 'No matches found'}
+            </h3>
             <p className="text-gray-400 text-sm mt-1">
-              Conversations will appear here once visitors start chatting.
+              {conversations.length === 0
+                ? 'Conversations will appear here once visitors start chatting.'
+                : 'Try a different search or filter.'}
             </p>
           </div>
         ) : (
           <div>
-            {conversations.map((conv) => (
+            {filtered.map((conv) => (
               <ConversationRow
                 key={conv.id}
                 conv={conv}
@@ -540,6 +643,14 @@ export default function AdminPage() {
                     prev.map((c) =>
                       c.id === id ? { ...c, follow_up_status: status as Conversation['follow_up_status'] } : c
                     )
+                  )
+                }
+                onDelete={(id) =>
+                  setConversations((prev) => prev.filter((c) => c.id !== id))
+                }
+                onNotesChange={(id, notes) =>
+                  setConversations((prev) =>
+                    prev.map((c) => (c.id === id ? { ...c, notes } : c))
                   )
                 }
               />

@@ -40,6 +40,7 @@ async function initDB() {
     "ALTER TABLE conversations ADD COLUMN prospect_status TEXT",
     "ALTER TABLE conversations ADD COLUMN ai_summary TEXT",
     "ALTER TABLE conversations ADD COLUMN follow_up_status TEXT",
+    "ALTER TABLE conversations ADD COLUMN notes TEXT",
   ]) {
     try {
       await db.execute(sql);
@@ -71,6 +72,7 @@ export interface Conversation {
   prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
   ai_summary: string | null;
   follow_up_status: 'not_contacted' | 'called' | 'no_answer' | 'appointment_set' | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -187,6 +189,24 @@ export async function saveProspectAnalysis(
   await db.execute({
     sql: "UPDATE conversations SET prospect_status = ?, ai_summary = ?, updated_at = datetime('now') WHERE id = ?",
     args: [status, summary, conversationId],
+  });
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  await ensureInit();
+  const db = getDB();
+  await db.execute({
+    sql: 'DELETE FROM conversations WHERE id = ?',
+    args: [conversationId],
+  });
+}
+
+export async function updateNotes(conversationId: string, notes: string): Promise<void> {
+  await ensureInit();
+  const db = getDB();
+  await db.execute({
+    sql: "UPDATE conversations SET notes = ?, updated_at = datetime('now') WHERE id = ?",
+    args: [notes, conversationId],
   });
 }
 

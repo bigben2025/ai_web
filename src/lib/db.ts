@@ -34,6 +34,18 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id);
     CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
   `);
+
+  // Add new columns to existing tables if they don't exist yet
+  for (const sql of [
+    "ALTER TABLE conversations ADD COLUMN prospect_status TEXT",
+    "ALTER TABLE conversations ADD COLUMN ai_summary TEXT",
+  ]) {
+    try {
+      await db.execute(sql);
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
 }
 
 let initialized = false;

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users,
   Phone,
   MessageSquare,
   Calendar,
@@ -15,6 +14,7 @@ import {
   MapPin,
   Activity,
   Download,
+  Flame,
 } from 'lucide-react';
 
 interface Message {
@@ -32,6 +32,8 @@ interface Conversation {
   user_phone: string | null;
   user_location: string | null;
   service_interest: string | null;
+  prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
+  ai_summary: string | null;
   created_at: string;
   updated_at: string;
   messages: Message[];
@@ -41,6 +43,7 @@ interface Stats {
   totalConversations: number;
   leadsWithPhone: number;
   todayConversations: number;
+  hotLeads: number;
 }
 
 function formatDate(dateStr: string): string {
@@ -132,7 +135,21 @@ function ConversationRow({ conv }: { conv: Conversation }) {
                 <span className="text-xs text-gray-400">
                   {conv.messages.length} messages
                 </span>
+                {conv.prospect_status && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    conv.prospect_status === 'hot'
+                      ? 'bg-red-100 text-red-700'
+                      : conv.prospect_status === 'warm'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {conv.prospect_status === 'hot' ? '🔥 Hot' : conv.prospect_status === 'warm' ? '🌤 Warm' : 'Not a Fit'}
+                  </span>
+                )}
               </div>
+              {conv.ai_summary && (
+                <p className="text-xs text-gray-500 mt-1 italic">"{conv.ai_summary}"</p>
+              )}
             </div>
           </div>
 
@@ -269,6 +286,7 @@ export default function AdminPage() {
     totalConversations: 0,
     leadsWithPhone: 0,
     todayConversations: 0,
+    hotLeads: 0,
   });
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -331,12 +349,14 @@ export default function AdminPage() {
 
   const exportCSV = () => {
     const rows = [
-      ['Name', 'Phone', 'Location', 'Service Interest', 'Date'],
-      ...leadsOnly.map((c) => [
+      ['Name', 'Phone', 'Location', 'Service Interest', 'Prospect Status', 'AI Summary', 'Date'],
+      ...conversations.map((c) => [
         c.user_name || '',
         c.user_phone || '',
         c.user_location || '',
         c.service_interest || '',
+        c.prospect_status || '',
+        c.ai_summary || '',
         formatDate(c.created_at),
       ]),
     ];
@@ -372,7 +392,7 @@ export default function AdminPage() {
             )}
             <button
               onClick={exportCSV}
-              disabled={leadsOnly.length === 0}
+              disabled={conversations.length === 0}
               className="flex items-center gap-2 text-sm text-white px-3 py-2 rounded-xl transition-colors disabled:opacity-40"
               style={{ backgroundColor: '#78b833' }}
             >
@@ -400,7 +420,7 @@ export default function AdminPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           <StatCard
             icon={MessageSquare}
             label="Total Conversations"
@@ -418,6 +438,12 @@ export default function AdminPage() {
             label="Today's Conversations"
             value={stats.todayConversations}
             color="bg-blue-500"
+          />
+          <StatCard
+            icon={Flame}
+            label="Hot Leads"
+            value={stats.hotLeads}
+            color="bg-red-500"
           />
         </div>
 

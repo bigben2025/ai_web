@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
-import { getOrCreateConversation, saveMessage, updateConversationLead } from '@/lib/db';
+import { getOrCreateConversation, saveMessage, updateConversationLead, saveProspectAnalysis } from '@/lib/db';
 import { getProvider } from '@/lib/providers';
+import { analyzeProspect } from '@/lib/analyzeProspect';
 
 export const runtime = 'nodejs';
 
@@ -63,6 +64,10 @@ export async function POST(req: NextRequest) {
               if (fullAssistantResponse) {
                 await saveMessage(conversation.id, 'assistant', fullAssistantResponse);
               }
+              const allMessages = [...messages, { role: 'assistant' as const, content: fullAssistantResponse }];
+              analyzeProspect(allMessages).then((analysis) => {
+                if (analysis) saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+              }).catch(() => {});
               sendEvent({ type: 'done' });
               controller.close();
               return;
@@ -73,6 +78,11 @@ export async function POST(req: NextRequest) {
           if (fullAssistantResponse) {
             await saveMessage(conversation.id, 'assistant', fullAssistantResponse);
           }
+          // Analyze prospect in background (don't block response)
+          const allMessages = [...messages, { role: 'assistant' as const, content: fullAssistantResponse }];
+          analyzeProspect(allMessages).then((analysis) => {
+            if (analysis) saveProspectAnalysis(conversation.id, analysis.status, analysis.summary);
+          }).catch(() => {});
           sendEvent({ type: 'done' });
           controller.close();
         } catch (error) {

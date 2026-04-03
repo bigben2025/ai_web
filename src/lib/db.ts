@@ -17,6 +17,8 @@ async function initDB() {
       user_phone TEXT,
       user_location TEXT,
       service_interest TEXT,
+      prospect_status TEXT,
+      ai_summary TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -53,6 +55,8 @@ export interface Conversation {
   user_phone: string | null;
   user_location: string | null;
   service_interest: string | null;
+  prospect_status: 'hot' | 'warm' | 'not_a_fit' | null;
+  ai_summary: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -159,23 +163,39 @@ export async function getAllConversationsWithMessages(): Promise<(Conversation &
   );
 }
 
+export async function saveProspectAnalysis(
+  conversationId: string,
+  status: 'hot' | 'warm' | 'not_a_fit',
+  summary: string
+): Promise<void> {
+  await ensureInit();
+  const db = getDB();
+  await db.execute({
+    sql: "UPDATE conversations SET prospect_status = ?, ai_summary = ?, updated_at = datetime('now') WHERE id = ?",
+    args: [status, summary, conversationId],
+  });
+}
+
 export async function getStats(): Promise<{
   totalConversations: number;
   leadsWithPhone: number;
   todayConversations: number;
+  hotLeads: number;
 }> {
   await ensureInit();
   const db = getDB();
 
-  const [total, leads, today] = await Promise.all([
+  const [total, leads, today, hot] = await Promise.all([
     db.execute('SELECT COUNT(*) as count FROM conversations'),
     db.execute("SELECT COUNT(*) as count FROM conversations WHERE user_phone IS NOT NULL AND user_phone != ''"),
     db.execute("SELECT COUNT(*) as count FROM conversations WHERE date(created_at) = date('now')"),
+    db.execute("SELECT COUNT(*) as count FROM conversations WHERE prospect_status = 'hot'"),
   ]);
 
   return {
     totalConversations: Number(total.rows[0].count),
     leadsWithPhone: Number(leads.rows[0].count),
     todayConversations: Number(today.rows[0].count),
+    hotLeads: Number(hot.rows[0].count),
   };
 }

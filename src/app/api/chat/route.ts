@@ -3,6 +3,7 @@ import { getOrCreateConversation, saveMessage, updateConversationLead, saveProsp
 import { getProvider } from '@/lib/providers';
 import { analyzeProspect } from '@/lib/analyzeProspect';
 import { sendHotLeadAlert } from '@/lib/notify';
+import { sendWelcomeSMS } from '@/lib/sms';
 
 export const runtime = 'nodejs';
 
@@ -61,6 +62,9 @@ export async function POST(req: NextRequest) {
             } else if (event.type === 'lead_captured') {
               await updateConversationLead(sessionId, event.data);
               sendEvent({ type: 'lead_captured', data: event.data });
+              if (event.data.phone) {
+                sendWelcomeSMS(event.data.phone, event.data.name ?? null).catch(() => {});
+              }
             } else if (event.type === 'done') {
               if (fullAssistantResponse) {
                 await saveMessage(conversation.id, 'assistant', fullAssistantResponse);

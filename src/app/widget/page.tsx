@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Phone } from 'lucide-react';
+import { Send, Phone, Star, X } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -82,6 +82,7 @@ export default function WidgetPage() {
   const [sessionId] = useState<string>(() => generateSessionId());
   const [leadCaptured, setLeadCaptured] = useState(false);
   const [showQuickStarts, setShowQuickStarts] = useState(true);
+  const [chatEnded, setChatEnded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -234,6 +235,53 @@ export default function WidgetPage() {
     }
   };
 
+  const reviewUrl = process.env.NEXT_PUBLIC_GOOGLE_REVIEW_URL || 'https://g.page/r/conciergecarefl/review';
+
+  if (chatEnded) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 shadow-sm flex-shrink-0">
+          <img
+            src="https://conciergecarefl.com/wp-content/uploads/logo-300x113.webp"
+            alt="Concierge Care Florida"
+            className="h-10 w-auto object-contain"
+          />
+        </div>
+        {/* Review screen */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+            <Star className="w-8 h-8 text-yellow-500" fill="currentColor" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-800 mb-2">Thank you for chatting with us!</h2>
+          <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+            We hope we were helpful. A care coordinator will be in touch soon.<br />
+            If you have a moment, we'd love a review — it means the world to families looking for care.
+          </p>
+          <a
+            href={reviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-white text-sm font-semibold px-6 py-3 rounded-2xl shadow-sm mb-4 transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#78b833' }}
+          >
+            <Star className="w-4 h-4" fill="white" />
+            Leave a Google Review
+          </a>
+          <button
+            onClick={() => setChatEnded(false)}
+            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            Back to chat
+          </button>
+        </div>
+        <p className="text-center text-[10px] text-gray-400 pb-4">
+          Concierge Care Florida · AHCA Licensed Nurse Registry
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       {/* Header */}
@@ -257,6 +305,16 @@ export default function WidgetPage() {
           <Phone className="w-3.5 h-3.5" />
           888-205-9940
         </a>
+        {messages.length > 1 && (
+          <button
+            onClick={() => setChatEnded(true)}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
+            title="End chat"
+          >
+            <X className="w-3.5 h-3.5" />
+            End
+          </button>
+        )}
       </div>
 
       {/* Lead captured banner */}
